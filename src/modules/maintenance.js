@@ -1,4 +1,4 @@
-import { addBook } from '../services/db.js';
+import { addBook, updateBook, updateUser, addMembership } from '../services/db.js';
 
 export const renderMaintenance = (container) => {
   container.innerHTML = `
@@ -46,8 +46,8 @@ const renderAddMembership = () => `
   <h3>Add Membership</h3>
   <form id="add-member-form">
     <div class="form-group">
-      <label>Name</label>
-      <input type="text" id="mem-name" class="form-control" required placeholder="User Name">
+      <label>User ID</label>
+      <input type="text" id="mem-userid" class="form-control" required placeholder="Enter User ID">
     </div>
     <div class="form-group">
       <label>Duration Option</label>
@@ -64,13 +64,20 @@ const renderAddMembership = () => `
 `;
 
 const bindAddMembership = () => {
-  document.getElementById('add-member-form').addEventListener('submit', (e) => {
+  document.getElementById('add-member-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const name = document.getElementById('mem-name').value;
-    if (!name.trim()) {
+    const userId = document.getElementById('mem-userid').value;
+    const durObj = document.querySelector('input[name="duration"]:checked');
+    const duration = durObj ? parseInt(durObj.value) : 6;
+    
+    if (!userId.trim()) {
       document.getElementById('add-mem-error').classList.add('show');
       return;
     }
+    
+    const startDate = new Date().toISOString();
+    await addMembership(userId, duration, startDate);
+    
     document.getElementById('add-mem-error').classList.remove('show');
     document.getElementById('add-mem-success').classList.remove('d-none');
     e.target.reset();
@@ -101,7 +108,6 @@ const renderUpdateMembership = () => `
 
 const bindUpdateMembership = () => {
   document.getElementById('mem-number').addEventListener('input', (e) => {
-    // mock population
     if (e.target.value.length > 2) {
       document.getElementById('upd-mem-name').value = "Mock Member Name";
     } else {
@@ -139,7 +145,7 @@ const renderAddBook = () => `
 `;
 
 const bindAddBook = () => {
-  document.getElementById('add-book-form').addEventListener('submit', (e) => {
+  document.getElementById('add-book-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const typeObj = document.querySelector('input[name="item-type"]:checked');
     const type = typeObj ? typeObj.value : 'book';
@@ -150,7 +156,7 @@ const bindAddBook = () => {
       return;
     }
     
-    addBook(title, author, type);
+    await addBook(title, author, type);
     
     document.getElementById('add-bk-error').classList.remove('show');
     alert("Item successfully added");
@@ -181,14 +187,21 @@ const renderUpdateBook = () => `
 `;
 
 const bindUpdateBook = () => {
-  document.getElementById('update-book-form').addEventListener('submit', (e) => {
+  document.getElementById('update-book-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('upd-item-id').value;
+    const title = document.getElementById('upd-title').value;
+    const typeObj = document.querySelector('input[name="upd-item-type"]:checked');
+    const type = typeObj ? typeObj.value : 'book';
+    
     if (!id) {
       alert("Missing ID");
       return;
     }
+    
+    await updateBook(id, title, type);
     alert("Item updated!");
+    e.target.reset();
   });
 };
 
@@ -203,7 +216,11 @@ const renderUserMgmt = () => `
       </div>
     </div>
     <div class="form-group">
-      <label>Name (Mandatory)</label>
+      <label>User ID</label>
+      <input type="text" id="um-id" class="form-control" required placeholder="User ID">
+    </div>
+    <div class="form-group">
+      <label>Name</label>
       <input type="text" id="um-name" class="form-control" required placeholder="User Name">
     </div>
     <div class="form-group">
@@ -222,13 +239,20 @@ const renderUserMgmt = () => `
 `;
 
 const bindUserMgmt = () => {
-  document.getElementById('user-mgmt-form').addEventListener('submit', (e) => {
+  document.getElementById('user-mgmt-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const isNew = document.querySelector('input[name="user-status"]:checked').value === 'new';
+    const id = document.getElementById('um-id').value;
     const name = document.getElementById('um-name').value;
-    if (!name) {
-      alert("Name is mandatory!");
+    const role = document.getElementById('um-role').value;
+    const pass = document.getElementById('um-pass').value;
+    
+    if (!id || !name || !pass) {
+      alert("All fields are mandatory!");
       return;
     }
+    
+    await updateUser(id, name, role, pass, isNew);
     alert("User managed successfully");
     e.target.reset();
   });

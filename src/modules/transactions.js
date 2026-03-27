@@ -1,4 +1,4 @@
-import { getDb } from '../services/db.js';
+import { getDb, issueBook } from '../services/db.js';
 
 export const renderTransactions = (container) => {
   container.innerHTML = `
@@ -15,24 +15,31 @@ export const renderTransactions = (container) => {
   const tabs = document.querySelectorAll('#txn-tabs .tab-btn');
   const content = document.getElementById('txn-content');
 
-  const loadTab = (tabId) => {
+  const loadTab = async (tabId) => {
     tabs.forEach(t => t.classList.remove('active'));
-    // In case tabId is pay-fine, also highlight it
     const activeTabObj = document.querySelector(`[data-tab="${tabId}"]`);
     if(activeTabObj) activeTabObj.classList.add('active');
 
-    if (tabId === 'check-availability') {
-      content.innerHTML = renderCheckAvailability();
-      bindCheckAvailability();
-    } else if (tabId === 'issue-book') {
-      content.innerHTML = renderIssueBook();
-      bindIssueBook();
-    } else if (tabId === 'return-book') {
-      content.innerHTML = renderReturnBook(loadTab);
-      bindReturnBook(loadTab);
-    } else if (tabId === 'pay-fine') {
-      content.innerHTML = renderPayFine();
-      bindPayFine();
+    content.innerHTML = `<div class="text-center mt-4"><p>Loading data...</p></div>`;
+
+    try {
+      if (tabId === 'check-availability') {
+        content.innerHTML = renderCheckAvailabilityHtml();
+        await bindCheckAvailability();
+      } else if (tabId === 'issue-book') {
+        const db = await getDb();
+        content.innerHTML = renderIssueBookHtml(db.books);
+        bindIssueBook(db.books);
+      } else if (tabId === 'return-book') {
+        const db = await getDb();
+        content.innerHTML = renderReturnBookHtml(db.books);
+        bindReturnBook(loadTab, db.books);
+      } else if (tabId === 'pay-fine') {
+        content.innerHTML = renderPayFineHtml();
+        bindPayFine();
+      }
+    } catch (err) {
+      content.innerHTML = `<div class="error-text text-center mt-4">Failed to load data. Is the backend running?</div>`;
     }
   };
 
@@ -40,7 +47,7 @@ export const renderTransactions = (container) => {
   loadTab('check-availability');
 };
 
-const renderCheckAvailability = () => `
+const renderCheckAvailabilityHtml = () => `
   <h3>Check Book Availability</h3>
   <form id="check-avail-form" class="mb-4">
     <div class="form-group">
@@ -77,7 +84,7 @@ const renderCheckAvailability = () => `
   </div>
 `;
 
-const bindCheckAvailability = () => {
+const bindCheckAvailability = async () => {
   const tbody = document.getElementById('search-results-body');
   const errorEl = document.getElementById('search-error');
   const proceedBtn = document.getElementById('proceed-issue-btn');
@@ -100,24 +107,21 @@ const bindCheckAvailability = () => {
     }));
   };
 
-  // Show all books on initial load
-  renderTable(getDb().books);
+  const dbInit = await getDb();
+  renderTable(dbInit.books);
 
-  document.getElementById('check-avail-form').addEventListener('submit', (e) => {
+  document.getElementById('check-avail-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('search-name').value;
     const cat = document.getElementById('search-category').value;
     
     if (!name.trim() && !cat) {
-      // If user submitted an empty search, we can reset to show all books instead of throwing error if desired by instructions,
-      // but instruction says "message on same page to make valid selection". So we show error.
       errorEl.classList.add('show');
       return;
     }
     errorEl.classList.remove('show');
     
-    // Process Search Results
-    const db = getDb();
+    const db = await getDb();
     let results = db.books;
     
     if (name.trim()) {
@@ -126,25 +130,24 @@ const bindCheckAvailability = () => {
     }
     
     renderTable(results);
-    proceedBtn.classList.add('d-none'); // Hide proceed button until a new selection is made
+    proceedBtn.classList.add('d-none');
   });
 
-  const btn = document.getElementById('proceed-issue-btn');
-  if(btn) {
-    btn.addEventListener('click', () => {
+  if(proceedBtn) {
+    proceedBtn.addEventListener('click', () => {
       alert("Book selected! Switch to Issue Book tab to proceed.");
     });
   }
 };
 
-const renderIssueBook = () => `
+const renderIssueBookHtml = (books) => `
   <h3>Issue Book</h3>
   <form id="issue-book-form">
     <div class="form-group">
       <label>Book Name <span class="text-danger">*</span></label>
       <select id="iss-book-id" class="form-control" required>
         <option value="">-- Select Book --</option>
-        ${getDb().books.map(b => `<option value="${b.id}">${b.title}</option>`).join('')}
+        ${books.map(b => `<option value="${b.id}" ${b.status !== 'available' ? 'disabled' : ''}>${b.title} ${b.status !== 'available' ? '(Issued)' : ''}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -164,16 +167,17 @@ const renderIssueBook = () => `
       <textarea id="iss-remarks" class="form-control"></textarea>
     </div>
     <div id="iss-error" class="error-text">Please make a valid selection and complete all mandatory fields. Ensure issue date >= today.</div>
-    <button type="submit" class="btn btn-primary">Submit Issue</button>
+    <div id="iss-success" class="alert alert-success d-none mt-2">Book issued successfully!</div>
+    <button type="submit" class="btn btn-primary mt-4">Submit Issue</button>
   </form>
 `;
 
-const bindIssueBook = () => {
-  const books = getDb().books;
+const bindIssueBook = (books) => {
   const bookSelect = document.getElementById('iss-book-id');
   const authorInput = document.getElementById('iss-author');
   const issueDateInput = document.getElementById('iss-date');
   const returnDateInput = document.getElementById('iss-return-date');
+  const remarksInput = document.getElementById('iss-remarks');
   
   const today = new Date().toISOString().split('T')[0];
   issueDateInput.min = today;
@@ -200,11 +204,12 @@ const bindIssueBook = () => {
     authorInput.value = selected ? selected.author : '';
   });
 
-  document.getElementById('issue-book-form').addEventListener('submit', (e) => {
+  document.getElementById('issue-book-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const bId = bookSelect.value;
     const iDate = issueDateInput.value;
     const rDate = returnDateInput.value;
+    const remarks = remarksInput.value;
 
     if (!bId || !iDate || !rDate || iDate < today) {
       document.getElementById('iss-error').classList.add('show');
@@ -221,21 +226,25 @@ const bindIssueBook = () => {
     }
 
     document.getElementById('iss-error').classList.remove('show');
-    alert("Book issued successfully!");
+    
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    await issueBook(bId, currentUser.id, iDate, rDate, remarks);
+
+    document.getElementById('iss-success').classList.remove('d-none');
     e.target.reset();
     issueDateInput.value = today;
     updateReturnDate();
   });
 };
 
-const renderReturnBook = () => `
+const renderReturnBookHtml = (books) => `
   <h3>Return Book</h3>
   <form id="return-book-form">
     <div class="form-group">
       <label>Book Name <span class="text-danger">*</span></label>
       <select id="ret-book-id" class="form-control" required>
         <option value="">-- Select Book --</option>
-        ${getDb().books.map(b => `<option value="${b.id}">${b.title}</option>`).join('')}
+        ${books.map(b => `<option value="${b.id}">${b.title}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -259,8 +268,7 @@ const renderReturnBook = () => `
   </form>
 `;
 
-const bindReturnBook = (loadTab) => {
-  const books = getDb().books;
+const bindReturnBook = (loadTab, books) => {
   const bookSelect = document.getElementById('ret-book-id');
   const authorInput = document.getElementById('ret-author');
   const issueDateInput = document.getElementById('ret-issue-date');
@@ -271,7 +279,7 @@ const bindReturnBook = (loadTab) => {
     const selected = books.find(b => b.id === e.target.value);
     if (selected) {
       authorInput.value = selected.author;
-      // Mock values for a past issued transaction
+      // Mock past issued transaction
       const pastIssueDate = new Date();
       pastIssueDate.setDate(pastIssueDate.getDate() - 10);
       issueDateInput.value = pastIssueDate.toISOString().split('T')[0];
@@ -296,13 +304,11 @@ const bindReturnBook = (loadTab) => {
       return;
     }
     document.getElementById('ret-error').classList.remove('show');
-    
-    // As per instruction: "With the confirm option used the user is taken to the Pay Fine page, irrespective of whether fine is there or not."
     loadTab('pay-fine');
   });
 };
 
-const renderPayFine = () => `
+const renderPayFineHtml = () => `
   <h3>Pay Fine</h3>
   <form id="pay-fine-form">
     <div class="form-group">
@@ -318,31 +324,14 @@ const renderPayFine = () => `
       <input type="text" id="pf-serial" class="form-control" value="SN-MOCK" readonly>
     </div>
     <div class="form-group">
-      <label>Issue Date</label>
-      <input type="date" id="pf-issue-date" class="form-control" value="2023-01-01" readonly>
-    </div>
-    <div class="form-group">
-      <label>Return Date</label>
-      <input type="date" id="pf-return-date" class="form-control" value="2023-01-16" readonly>
-    </div>
-    <div class="form-group">
-      <label>Actual Return Date</label>
-      <input type="date" id="pf-actual-date" class="form-control" value="2023-01-20" readonly>
-    </div>
-    <div class="form-group">
       <label>Fine Calculated (Rs)</label>
-      <!-- Change this value to 0 to simulate NO fine. Leaving it at 50 to simulate PENDING fine. -->
       <input type="number" id="pf-amount" class="form-control" value="50" readonly>
     </div>
     <div class="form-group checkbox-group mb-4">
       <input type="checkbox" id="pf-paid-check">
       <label for="pf-paid-check">Fine Paid</label>
     </div>
-    <div class="form-group">
-      <label>Remarks</label>
-      <textarea id="pf-remarks" class="form-control"></textarea>
-    </div>
-    <div id="pf-error" class="error-text">Please ensure fine is paid before confirming to complete the transaction.</div>
+    <div id="pf-error" class="error-text">Please ensure fine is paid before confirming.</div>
     <button type="submit" class="btn btn-primary">Confirm</button>
   </form>
 `;
@@ -360,6 +349,5 @@ const bindPayFine = () => {
     
     document.getElementById('pf-error').classList.remove('show');
     alert("Transaction successfully completed!");
-    // Go to default transactions state or reset
   });
 };

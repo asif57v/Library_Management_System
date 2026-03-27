@@ -71,12 +71,12 @@ export const renderLogin = () => {
     subtitle.innerText = "Sign in to your account";
   });
 
-  loginForm.addEventListener('submit', (e) => {
+  loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('userid').value;
     const pass = document.getElementById('password').value;
     
-    const user = authUser(id, pass);
+    const user = await authUser(id, pass);
     if (user) {
       renderDashboard();
     } else {
@@ -84,19 +84,19 @@ export const renderLogin = () => {
     }
   });
 
-  signupForm.addEventListener('submit', (e) => {
+  signupForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('reg-name').value;
     const id = document.getElementById('reg-userid').value;
     const pass = document.getElementById('reg-password').value;
     
-    const res = registerUser(id, name, pass);
+    const res = await registerUser(id, name, pass);
     if (res.success) {
       document.getElementById('signup-error').classList.remove('show');
       document.getElementById('signup-success').classList.remove('d-none');
-      setTimeout(() => {
+      setTimeout(async () => {
         // Auto login
-        authUser(id, pass);
+        await authUser(id, pass);
         renderDashboard();
       }, 1500);
     } else {
