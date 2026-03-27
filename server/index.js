@@ -106,6 +106,16 @@ app.post('/api/transactions/issue', (req, res) => {
   });
 });
 
+const path = require('path');
+
+// Serve static frontend files from Vite build
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// Fallback for SPA routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
