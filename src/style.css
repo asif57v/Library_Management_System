@@ -31,6 +31,13 @@ body {
   flex-direction: column;
 }
 
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+}
+
 /* Glass Card */
 .glass-card {
   background: var(--surface-color);
